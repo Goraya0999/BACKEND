@@ -2,7 +2,9 @@
 from fastapi import FastAPI
 
 #make instance 
-app=FastAPI()
+app=FastAPI(
+    
+)
 #---routing --- get(/)----|
 # "get" is used to get from server 
 # ("/") is root endpoint
