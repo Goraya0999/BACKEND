@@ -42,3 +42,6 @@ So how do they work together? 🤔
 
 ```bash
 gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker
+
+
+JMCFQS6uj@8Ugdr
