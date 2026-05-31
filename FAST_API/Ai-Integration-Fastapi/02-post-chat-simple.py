@@ -1,150 +1,183 @@
-#049 How do you define a model that must have at least one field set?
+# ==========================================================
+# #02 POST /chat — Basic AI Chat Completion Endpoint
+# ==========================================================
 
-# Use @model_validator(mode="after")
-# to perform validation after all fields
-# have been processed.
+# Goal:
+# Build a FastAPI endpoint that:
+# 1. Receives a user message
+# 2. Sends the message to an AI model
+# 3. Receives the AI response
+# 4. Returns the reply to the client
 #
-# This is useful when at least one of several
-# optional fields must contain a value.
-
-from pydantic import BaseModel, model_validator
-
-
-class ContactInfo(BaseModel):
-    """
-    Fields:
-        email → optional
-        phone → optional
-
-    Rules:
-        - At least one field must be provided
-    """
-    email: str | None = None
-    phone: str | None = None
-
-    @model_validator(mode="after")
-    def validate_at_least_one_field(self):
-        if self.email is None and self.phone is None:
-            raise ValueError(
-                "At least one of email or phone must be provided"
-            )
-        return self
+# Request Flow:
+#
+# Client
+#   |
+#   | POST /chat
+#   v
+# FastAPI
+#   |
+#   | Call AI API
+#   v
+# Grok / OpenAI
+#   |
+#   | Generate response
+#   v
+# FastAPI
+#   |
+#   | Return JSON
+#   v
+# Client
 
 
-# Example (Valid)
+# ==========================================================
+# STEP 1: Imports
+# ==========================================================
 
-contact1 = ContactInfo(
-    email="ali@example.com"
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+# OpenAI SDK works with Grok too
+# when configured correctly.
+
+from openai import OpenAI
+
+
+# ==========================================================
+# STEP 2: Create FastAPI App
+# ==========================================================
+
+app = FastAPI()
+
+
+# ==========================================================
+# STEP 3: Create AI Client
+# ==========================================================
+
+# Never hardcode API keys!
+
+client = OpenAI(
+    api_key="YOUR_API_KEY"
 )
 
-print(contact1)
-
-# Output:
-# email='ali@example.com' phone=None
-
-
-# Example (Valid)
-
-contact2 = ContactInfo(
-    phone="+923001234567"
-)
-
-print(contact2)
-
-# Output:
-# email=None phone='+923001234567'
-
-
-# Example (Invalid)
-
-# ContactInfo()
+# Better approach:
 #
-# ValidationError:
-# At least one of email or phone must be provided
-
-
-# Professional Note:
-# - model_validator() validates the entire model.
-# - mode="after" runs after field validation.
-# - Useful for:
-#     • At least one field required
-#     • Cross-field validation
-#     • Business rule enforcement
-#     • Complex validation logic
-# - Replaces root_validator() from Pydantic v1.
-# - Ideal when validation depends on multiple fields.
-
-
-#-------------------------
-
-
-#050 How do you use BaseSettings for configuration with env vars?
-
-# BaseSettings automatically loads values
-# from environment variables and .env files.
+# api_key = settings.openai_api_key
 #
-# It is commonly used for application
-# configuration and secrets management.
-
-from pydantic_settings import BaseSettings
+# Loaded from .env file
 
 
-class Settings(BaseSettings):
+# ==========================================================
+# STEP 4: Request Model
+# ==========================================================
+
+class ChatRequest(BaseModel):
     """
-    Configuration settings.
+    Data sent by user.
 
-    Environment Variables:
-        DATABASE_URL
-        SECRET_KEY
-        DEBUG
+    Example:
+
+    {
+        "message": "Hello",
+        "model": "grok-3"
+    }
     """
-    database_url: str
-    secret_key: str
-    debug: bool = False
+
+    message: str
+
+    # default model
+
+    model: str = "grok-3"
 
 
-# Create settings object
-settings = Settings()
+# ==========================================================
+# STEP 5: Response Model
+# ==========================================================
+
+class ChatResponse(BaseModel):
+    """
+    Data returned to user.
+
+    Example:
+
+    {
+        "reply": "Hello! How can I help?",
+        "model": "grok-3",
+        "tokens_used": 25
+    }
+    """
+
+    reply: str
+
+    model: str
+
+    tokens_used: int
 
 
-# Example .env file
+# ==========================================================
+# STEP 6: Create POST Endpoint
+# ==========================================================
 
-# DATABASE_URL=postgresql://user:pass@localhost/db
-# SECRET_KEY=my_secret_key
-# DEBUG=true
+@app.post("/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest):
+
+    """
+    req contains:
+
+    ChatRequest(
+        message="Hello",
+        model="grok-3"
+    )
+    """
+
+    # Send request to AI
+
+    response = client.chat.completions.create(
+
+        model=req.model,
+
+        messages=[
+            {
+                "role": "user",
+                "content": req.message
+            }
+        ]
+    )
+
+    # Extract generated text
+
+    ai_reply = response.choices[0].message.content
+
+    # Return structured response
+
+    return ChatResponse(
+        reply=ai_reply,
+        model=response.model,
+        tokens_used=response.usage.total_tokens
+    )
 
 
-# Access values
+# ==========================================================
+# Example Request
+# ==========================================================
 
-print(settings.database_url)
-print(settings.secret_key)
-print(settings.debug)
+"""
+POST /chat
 
-
-# Professional Note:
-# - BaseSettings automatically reads:
-#     • Environment variables
-#     • .env files
-#     • System configuration values
-# - Useful for:
-#     • Database URLs
-#     • API keys
-#     • Secret keys
-#     • Feature flags
-# - Keeps sensitive data out of source code.
-# - Supports different configurations for:
-#     • Development
-#     • Testing
-#     • Production
-# - Widely used in FastAPI applications for
-#   centralized configuration management.
+{
+    "message": "What is Python?"
+}
+"""
 
 
-# Example Environment Variable Mapping:
-#
-# DATABASE_URL  -> settings.database_url
-# SECRET_KEY    -> settings.secret_key
-# DEBUG         -> settings.debug
+# ==========================================================
+# Example Response
+# ==========================================================
 
-
-#-------------------------
+"""
+{
+    "reply": "Python is a programming language.",
+    "model": "grok-3",
+    "tokens_used": 34
+}
+"""
